@@ -1,5 +1,5 @@
 {
-  "name": "@limiter/core",
+  "name": "@aanantduhan/limiter-core",
   "version": "1.0.0",
   "description": "Production-grade distributed rate limiter for Node.js. Same API for memory and Redis — swap backends with one config change.",
   "main": "dist/index.js",
