@@ -24,6 +24,23 @@
       --yellow: #FBBF24;
       --mono: 'JetBrains Mono', monospace;
       --sans: 'Inter', sans-serif;
+      --nav-bg: rgba(8, 12, 20, 0.85);
+    }
+    :root[data-theme="light"] {
+      --base: #F4F7FB;
+      --surface: #FFFFFF;
+      --surface2: #EBF0F7;
+      --border: #D0DCE8;
+      --border2: #B0C4D8;
+      --text: #1A2A3A;
+      --text-dim: #3A5A7A;
+      --text-muted: #6A8AAA;
+      --blue: #1A6BD4;
+      --blue-dim: #D0E4F8;
+      --green: #0D9A6A;
+      --red: #CC2A2A;
+      --yellow: #B07A00;
+      --nav-bg: rgba(244, 247, 251, 0.9);
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
@@ -41,7 +58,7 @@
     nav {
       position: fixed; top: 0; left: 0; right: 0; z-index: 100;
       border-bottom: 1px solid var(--border);
-      background: rgba(8, 12, 20, 0.85);
+      background: var(--nav-bg);
       backdrop-filter: blur(12px);
       padding: 0 2rem;
       height: 52px;
@@ -68,6 +85,14 @@
       cursor: pointer; transition: border-color 0.15s, background 0.15s;
     }
     .nav-install:hover { border-color: var(--blue); background: var(--blue-dim); }
+    .theme-toggle {
+      font-family: var(--mono); font-size: 12px;
+      background: transparent; border: 1px solid var(--border2);
+      color: var(--text-dim); padding: 6px 10px; border-radius: 4px;
+      cursor: pointer; transition: border-color 0.15s, color 0.15s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .theme-toggle:hover { border-color: var(--blue); color: var(--blue); }
 
     /* Hero */
     .hero {
@@ -274,6 +299,11 @@
     .cm { color: var(--text-muted); }
     .num { color: #E8A87C; }
     .prop { color: #C8A0E8; }
+    :root[data-theme="light"] .kw { color: #1A5EAA; }
+    :root[data-theme="light"] .fn { color: #8A6000; }
+    :root[data-theme="light"] .str { color: #1A7A40; }
+    :root[data-theme="light"] .num { color: #B04000; }
+    :root[data-theme="light"] .prop { color: #6A30B0; }
 
     /* Features grid */
     .features {
@@ -397,6 +427,9 @@
     <a href="#usage">usage</a>
     <a href="#compare">compare</a>
     <a href="https://github.com/AnantDuhan/limiter-core" target="_blank">github</a>
+    <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn" title="Toggle light/dark mode">
+      <span id="theme-icon">☀</span>
+    </button>
     <button class="nav-install" onclick="copyInstall()">npm install</button>
   </div>
 </nav>
@@ -709,6 +742,19 @@ app.<span class="fn">use</span>(<span class="fn">expressMiddleware</span>(limite
 </footer>
 
 <script>
+  // Theme toggle
+  const stored = localStorage.getItem('theme');
+  if (stored) document.documentElement.setAttribute('data-theme', stored);
+  function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    document.getElementById('theme-icon').textContent = next === 'light' ? '☾' : '☀';
+  }
+  // Set icon on load
+  if (stored === 'light') document.getElementById('theme-icon').textContent = '☾';
+
   // Token bucket demo state
   const RATE = 10;
   const WINDOW_MS = 10000;
