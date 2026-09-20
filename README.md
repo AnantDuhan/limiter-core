@@ -1,566 +1,221 @@
 # @limiter/core
 
-Production-grade rate limiter for Node.js. **Same code on localhost and production. Zero rewrites.**
+Production-grade distributed rate limiter for Node.js.
 
-In-memory for development. Redis for scale. One configuration.
-
-![npm version](https://img.shields.io/npm/v/@limiter/core)
-![MIT License](https://img.shields.io/badge/license-MIT-blue)
-
----
-
-## Why @limiter/core?
-
-Every backend builds rate limiting in-house. Again and again.
-
-- **Existing solutions force you to choose:** single-process only, or rewrite for Redis
-- **Most don't handle clock skew** in distributed systems
-- **Testing distributed rate limiting is painful**
-- **Framework integration requires glue code**
-
-@limiter/core solves this:
-
-✅ **One API, any backend** — Memory for dev, Redis for production, same code  
-✅ **Token Bucket + Sliding Window** — Pick your strategy  
-✅ **Clock skew detection** — Handles NTP drift automatically  
-✅ **Burst allowance** — Smooth spikes without rejecting legitimate requests  
-✅ **Express & Fastify ready** — Lightweight adapters included  
-✅ **Framework agnostic** — Works with any Node.js backend  
-✅ **TypeScript first** — Full type safety, excellent autocomplete  
-✅ **Production proven** — Battle-tested edge cases  
-
----
-
-## Installation
+**Same code on localhost and production.** Use memory in development, Redis in production — one config change, no API difference.
 
 ```bash
 npm install @limiter/core
-```
-
-Optional: If using Redis backend:
-```bash
-npm install redis
 ```
 
 ---
 
 ## Quick Start
 
-### 30 seconds
-
 ```typescript
 import { RateLimiter } from '@limiter/core';
 
 const limiter = new RateLimiter({
   strategy: 'token-bucket',
-  rate: 100,              // requests
-  window: '1 minute',     // per window
-  backend: 'memory',      // dev
+  rate: 100,           // 100 requests
+  window: '1 minute',  // per minute
+  burst: 150,          // allow spike up to 150
+  backend: 'memory',   // swap to 'redis' in production
 });
 
-// Check if request is allowed
-const { allowed, remaining } = await limiter.check(userId);
+const { allowed, remaining, retryAfter } = await limiter.check('user-123');
 
 if (!allowed) {
-  res.status(429).send('Too many requests');
+  res.status(429).json({ error: 'Too many requests', retryAfter });
 }
 ```
 
-### With Express
+---
+
+## Backends
+
+### Memory (development / single-process)
 
 ```typescript
-import { RateLimiter } from '@limiter/core';
-import { expressMiddleware } from '@limiter/core/adapters/express';
-
 const limiter = new RateLimiter({
   strategy: 'token-bucket',
   rate: 100,
   window: '1 minute',
   backend: 'memory',
 });
-
-app.use(expressMiddleware(limiter, {
-  keyExtractor: (req) => req.user?.id || req.ip,
-}));
-
-app.get('/api/data', (req, res) => {
-  res.json({ data: 'fast' });
-});
 ```
 
-### With Fastify
+### Redis (production / distributed)
 
 ```typescript
-import { RateLimiter } from '@limiter/core';
-import { fastifyPlugin } from '@limiter/core/adapters/fastify';
+import { createClient } from 'redis';
+
+const redis = createClient({ url: process.env.REDIS_URL });
+await redis.connect();
 
 const limiter = new RateLimiter({
   strategy: 'token-bucket',
   rate: 100,
   window: '1 minute',
-  backend: 'redis',       // production
+  backend: 'redis',      // ← only line that changes
   redisClient: redis,
 });
+```
 
-await app.register(fastifyPlugin(limiter, {
-  keyExtractor: (req) => req.user?.id,
+---
+
+## Express Middleware
+
+```typescript
+import express from 'express';
+import { RateLimiter, expressMiddleware } from '@limiter/core';
+
+const app = express();
+const limiter = new RateLimiter({ rate: 100, window: '1 minute', backend: 'memory', strategy: 'token-bucket' });
+
+// Global: all routes
+app.use(expressMiddleware(limiter));
+
+// Route-specific
+app.post('/login', expressMiddleware(limiter, {
+  keyExtractor: (req) => req.body.email,           // rate limit by email
+  onLimitReached: (req, res, result) => {
+    res.status(429).json({ error: 'Too many login attempts', retryAfter: result.retryAfter });
+  },
+}));
+
+// Skip health checks
+app.use(expressMiddleware(limiter, {
+  skip: (req) => req.path === '/health',
 }));
 ```
 
-### Escalate to Production (No code changes!)
+Response headers added automatically:
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 87
+X-RateLimit-Reset: 1718123456
+Retry-After: 30     (only on 429)
+```
+
+---
+
+## Fastify Plugin
 
 ```typescript
-// Same code as above, different config
-const limiter = new RateLimiter({
-  strategy: 'token-bucket',
-  rate: 100,
-  window: '1 minute',
-  backend: 'redis',       // ← Change one line
-  redisClient: redis,     // ← Pass Redis client
+import Fastify from 'fastify';
+import { RateLimiter, fastifyPlugin } from '@limiter/core';
+
+const app = Fastify();
+const limiter = new RateLimiter({ rate: 100, window: '1 minute', backend: 'memory', strategy: 'token-bucket' });
+
+await app.register(fastifyPlugin, {
+  limiter,
+  keyExtractor: (req) => req.headers['x-api-key'] as string ?? req.ip,
 });
-```
-
----
-
-## Configuration
-
-### RateLimiterConfig
-
-```typescript
-interface RateLimiterConfig {
-  /**
-   * Rate limiting strategy
-   * - 'token-bucket': Smooth, handles bursts
-   * - 'sliding-window': Maximum accuracy
-   */
-  strategy: 'token-bucket' | 'sliding-window';
-
-  /**
-   * Number of requests allowed
-   */
-  rate: number;
-
-  /**
-   * Time window
-   * Strings: '1 second', '1 minute', '1 hour', '1 day'
-   * Numbers: milliseconds
-   */
-  window: string | number;
-
-  /**
-   * Burst allowance (default: same as rate)
-   * Allows temporary spikes above the rate
-   */
-  burst?: number;
-
-  /**
-   * Storage backend
-   * - 'memory': Development, single process
-   * - 'redis': Production, distributed
-   */
-  backend: 'memory' | 'redis';
-
-  /**
-   * Redis client (required if backend: 'redis')
-   */
-  redisClient?: any;
-
-  /**
-   * Clock skew tolerance in milliseconds
-   * Default: 5000 (5 seconds)
-   * Allows for NTP drift between servers
-   */
-  clockSkewTolerance?: number;
-}
-```
-
----
-
-## API
-
-### `limiter.check(key: string): Promise<CheckResult>`
-
-Check if a request is allowed.
-
-```typescript
-const { allowed, remaining, resetAt, retryAfter } = await limiter.check(userId);
-
-if (!allowed) {
-  console.log(`Try again in ${retryAfter} seconds`);
-}
-```
-
-**Returns:**
-```typescript
-{
-  allowed: boolean;           // Is request allowed?
-  remaining: number;          // Requests left in window
-  resetAt: Date;             // When window resets
-  retryAfter?: number;       // Seconds to retry (if denied)
-}
-```
-
-### `limiter.getStatus(key: string): Promise<RateLimiterStatus | null>`
-
-Get the current status of a bucket.
-
-```typescript
-const status = await limiter.getStatus(userId);
-if (status) {
-  console.log(`${status.remaining} requests remaining`);
-}
-```
-
-### `limiter.reset(key: string): Promise<void>`
-
-Clear a rate limit bucket.
-
-```typescript
-// Admin: reset user's quota
-await limiter.reset(userId);
-```
-
-### `limiter.close(): Promise<void>`
-
-Close the limiter and clean up resources.
-
-```typescript
-await limiter.close();
 ```
 
 ---
 
 ## Strategies
 
-### Token Bucket (Recommended)
-
-Smooth rate limiting with burst allowance.
+### Token Bucket (default)
+Smooth rate limiting with burst support. Tokens refill gradually — a user who hasn't made requests for 30 seconds gets some tokens back.
 
 ```typescript
-const limiter = new RateLimiter({
-  strategy: 'token-bucket',
-  rate: 100,      // 100 tokens per window
-  window: '1 minute',
-  burst: 150,     // Allow spike to 150 for short periods
-  backend: 'redis',
-  redisClient: redis,
-});
+{ strategy: 'token-bucket', rate: 100, window: '1 minute', burst: 150 }
 ```
-
-**Use when:**
-- You want smooth, predictable rate limiting
-- You want to allow temporary bursts
-- Most production APIs
 
 ### Sliding Window
-
-Maximum accuracy. Every request in the window is counted.
-
-```typescript
-const limiter = new RateLimiter({
-  strategy: 'sliding-window',
-  rate: 100,
-  window: '1 minute',
-  backend: 'redis',
-  redisClient: redis,
-});
-```
-
-**Use when:**
-- You need exact accuracy (e.g., strict quota enforcement)
-- You're okay with higher memory usage (stores every request)
-- Regulatory requirements
-
----
-
-## Advanced Usage
-
-### Per-Route Limiting (Express)
+Exact per-window counting. Every request in the last N milliseconds is counted — no burst allowance.
 
 ```typescript
-const createLimiter = (rate, window) => {
-  return new RateLimiter({
-    rate,
-    window,
-    backend: 'redis',
-    redisClient: redis,
-  });
-};
-
-const uploadLimiter = createLimiter(5, '1 hour');
-
-app.post('/upload', expressMiddleware(uploadLimiter), (req, res) => {
-  // handle upload
-});
-```
-
-### Custom Key Extraction
-
-```typescript
-app.use(expressMiddleware(limiter, {
-  keyExtractor: (req) => {
-    // Rate limit by API key, with higher quota for premium
-    const apiKey = req.headers['x-api-key'];
-    const tier = getTierByApiKey(apiKey);
-    return `${tier}:${apiKey}`;
-  },
-}));
-```
-
-### Multi-Tier Rate Limiting
-
-```typescript
-const freeTierLimiter = new RateLimiter({
-  rate: 100,
-  window: '1 hour',
-  backend: 'redis',
-  redisClient: redis,
-});
-
-const proPremiumTierLimiter = new RateLimiter({
-  rate: 10000,
-  window: '1 hour',
-  backend: 'redis',
-  redisClient: redis,
-});
-
-app.use((req, res, next) => {
-  const limiter = req.user?.tier === 'pro' 
-    ? proPremiumTierLimiter 
-    : freeTierLimiter;
-  
-  return expressMiddleware(limiter)(req, res, next);
-});
-```
-
-### Conditional Rate Limiting
-
-```typescript
-app.use(expressMiddleware(limiter, {
-  skip: (req) => {
-    // Don't rate limit admin users
-    return req.user?.role === 'admin';
-  },
-}));
-```
-
-### Custom Error Handling
-
-```typescript
-app.use(expressMiddleware(limiter, {
-  onLimit: (req, res) => {
-    res.status(429).json({
-      error: 'Rate limit exceeded',
-      retryAfter: req.rateLimit.retryAfter,
-      remaining: req.rateLimit.remaining,
-    });
-  },
-}));
+{ strategy: 'sliding-window', rate: 100, window: '1 minute' }
+// Note: sliding-window requires Redis backend
 ```
 
 ---
 
-## Testing
+## API Reference
 
-### Unit Tests
+### `new RateLimiter(config)`
 
-```typescript
-describe('RateLimiter', () => {
-  it('allows requests within rate', async () => {
-    const limiter = new RateLimiter({
-      rate: 5,
-      window: '1 minute',
-      backend: 'memory',
-    });
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `strategy` | `'token-bucket' \| 'sliding-window'` | ✓ | — | Algorithm |
+| `rate` | `number` | ✓ | — | Max requests per window |
+| `window` | `string \| number` | ✓ | — | Time window (`'1 minute'` or ms) |
+| `backend` | `'memory' \| 'redis'` | ✓ | — | Storage backend |
+| `burst` | `number` | | `rate` | Max burst (token-bucket only) |
+| `redisClient` | Redis client | required if redis | — | redis v4/v5 client |
+| `clockSkewTolerance` | `number` | | `5000` | Clock skew tolerance in ms |
 
-    const result = await limiter.check('test-key');
-    expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(4);
-  });
+### `limiter.check(key)` → `Promise<CheckResult>`
 
-  it('denies requests beyond rate', async () => {
-    const limiter = new RateLimiter({
-      rate: 2,
-      window: '1 minute',
-      backend: 'memory',
-    });
+| Field | Type | Description |
+|-------|------|-------------|
+| `allowed` | `boolean` | Whether the request is allowed |
+| `remaining` | `number` | Requests remaining in window |
+| `resetAt` | `Date` | When the window resets |
+| `retryAfter` | `number?` | Seconds to wait (only if denied) |
 
-    await limiter.check('test-key'); // 1st
-    await limiter.check('test-key'); // 2nd
-    const result = await limiter.check('test-key'); // 3rd
+### `limiter.reset(key)` — clear quota for a key
+### `limiter.getStatus(key)` — get current bucket status
+### `limiter.close()` — clean up resources
 
-    expect(result.allowed).toBe(false);
-    expect(result.retryAfter).toBeGreaterThan(0);
-  });
-});
-```
+---
 
-### Integration Tests (Redis)
+## Window Formats
 
 ```typescript
-describe('RateLimiter with Redis', () => {
-  let redis: Redis;
-
-  beforeAll(async () => {
-    redis = new Redis();
-  });
-
-  afterEach(async () => {
-    await redis.flushdb();
-  });
-
-  it('works with Redis backend', async () => {
-    const limiter = new RateLimiter({
-      rate: 5,
-      window: '1 minute',
-      backend: 'redis',
-      redisClient: redis,
-    });
-
-    const result = await limiter.check('test-key');
-    expect(result.allowed).toBe(true);
-  });
-});
+'1 second'    // 1000ms
+'30 seconds'
+'1 minute'    // 60000ms
+'5 minutes'
+'1 hour'
+'1 day'
+60000         // raw milliseconds
 ```
 
 ---
 
-## Monitoring & Observability
-
-### Response Headers
-
-Automatic X-RateLimit headers:
-
-```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 47
-X-RateLimit-Reset: 2026-09-20T14:30:00Z
-Retry-After: 28
-```
-
-### Logging
+## Key Strategies
 
 ```typescript
-app.use(expressMiddleware(limiter, {
-  onLimit: (req, res) => {
-    console.warn(`Rate limit exceeded for ${req.user?.id}`);
-    res.status(429).send('Too many requests');
-  },
-}));
-```
+// By IP (default)
+keyExtractor: (req) => req.ip
 
-### Metrics Export
+// By user ID
+keyExtractor: (req) => req.user?.id
 
-```typescript
-// Get status for dashboards
-const status = await limiter.getStatus(userId);
-sendMetric('rate_limiter.remaining', status?.remaining || 0);
+// By API key
+keyExtractor: (req) => req.headers['x-api-key']
+
+// By org (shared limit across a team)
+keyExtractor: (req) => `org:${req.user?.orgId}`
+
+// Composite: per-user per-route
+keyExtractor: (req) => `${req.user?.id}:${req.path}`
 ```
 
 ---
 
-## Performance
+## Comparison
 
-- **Memory backend**: O(1) per request, <1ms latency
-- **Redis backend**: O(1) per request, ~5-10ms latency (network bound)
-- **No garbage collection pauses** with proper Redis cleanup
-
-### Benchmarks
-
-Run benchmarks:
-
-```bash
-npm run bench
-```
-
----
-
-## Edge Cases & Design
-
-### Clock Skew
-
-Automatically detects and handles NTP drift:
-
-```typescript
-const limiter = new RateLimiter({
-  rate: 100,
-  window: '1 minute',
-  clockSkewTolerance: 5000,  // Allow ±5 seconds drift
-  backend: 'redis',
-  redisClient: redis,
-});
-```
-
-If clock drift exceeds tolerance, requests are rejected with an error to alert operators.
-
-### Burst Allowance
-
-Token bucket allows temporary bursts:
-
-```typescript
-const limiter = new RateLimiter({
-  rate: 100,           // 100/minute steady state
-  burst: 150,          // But allow up to 150 in short burst
-  window: '1 minute',
-  backend: 'redis',
-  redisClient: redis,
-});
-```
-
-A user can send 150 requests immediately, then must wait for refill.
-
-### Distributed Deployments
-
-Redis backend handles multiple servers safely with Lua scripts for atomic operations.
-
----
-
-## Contributing
-
-Contributions welcome! See `CONTRIBUTING.md` for guidelines.
+| | @limiter/core | express-rate-limit | bottleneck | redis-rate-limiter |
+|---|:---:|:---:|:---:|:---:|
+| Distributed (Redis) | ✅ | ❌ | ❌ | ✅ |
+| Memory + Redis same API | ✅ | ❌ | ❌ | ❌ |
+| Token bucket | ✅ | ✅ | ✅ | ❌ |
+| Sliding window | ✅ | ✅ | ❌ | ❌ |
+| Burst allowance | ✅ | ❌ | ✅ | ❌ |
+| Clock skew handling | ✅ | ❌ | ❌ | ❌ |
+| TypeScript | ✅ | ✅ | ✅ | ❌ |
+| Express adapter | ✅ | ✅ | ❌ | ❌ |
+| Fastify adapter | ✅ | ❌ | ❌ | ❌ |
 
 ---
 
 ## License
 
-MIT
-
----
-
-## Roadmap
-
-- [ ] v1.0 — Core functionality, Express/Fastify adapters
-- [ ] v1.1 — Distributed tracing, Prometheus metrics export
-- [ ] v2.0 — Deno support, additional strategies
-- [ ] v2.1 — GraphQL rate limiting, WebSocket support
-
----
-
-## FAQ
-
-**Q: Can I use this in browsers?**  
-A: No, @limiter/core is Node.js only. Browsers don't have persistent storage for rate limiting.
-
-**Q: What if Redis goes down?**  
-A: Configure circuit breaker logic to fall back to permissive limits or retry. See examples.
-
-**Q: Can I use this without Redis?**  
-A: Yes! Memory backend works great for single-process deployments. Upgrade to Redis when you scale.
-
-**Q: How accurate is sliding window?**  
-A: Exact. Every request is recorded within the window. Token bucket is good enough for most cases.
-
-**Q: Does this work with serverless?**  
-A: Partially. Memory backend won't work (no persistence across invocations). Redis backend does. See serverless guide.
-
----
-
-## Support
-
-- 📖 [Docs](https://github.com/your-username/rate-limiter)
-- 🐛 [Issues](https://github.com/your-username/rate-limiter/issues)
-- 💬 [Discussions](https://github.com/your-username/rate-limiter/discussions)
-
----
-
-Made with ❤️ for Node.js backends.
+MIT © [Anant Duhan](https://github.com/AnantDuhan)
