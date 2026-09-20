@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>@anantduhan/limiter-core — Rate limiting for Node.js</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --base: #080C14;
+      --surface: #0F1623;
+      --surface2: #182030;
+      --border: #1E2D42;
+      --border2: #2A3F5A;
+      --text: #C8D6E8;
+      --text-dim: #5A7A9A;
+      --text-muted: #3A5070;
+      --blue: #3B8BEB;
+      --blue-dim: #1A4A7A;
+      --green: #34D399;
+      --red: #F87171;
+      --yellow: #FBBF24;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Inter', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--base);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    ::selection { background: var(--blue-dim); color: var(--text); }
+
+    /* Nav */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      border-bottom: 1px solid var(--border);
+      background: rgba(8, 12, 20, 0.85);
+      backdrop-filter: blur(12px);
+      padding: 0 2rem;
+      height: 52px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      letter-spacing: 0;
+    }
+    .nav-logo span { color: var(--blue); }
+    .nav-links { display: flex; gap: 2rem; align-items: center; }
+    .nav-links a {
+      font-family: var(--mono); font-size: 12px;
+      color: var(--text-dim); text-decoration: none;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-install {
+      font-family: var(--mono); font-size: 12px;
+      background: var(--surface2); border: 1px solid var(--border2);
+      color: var(--text); padding: 6px 14px; border-radius: 4px;
+      cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    }
+    .nav-install:hover { border-color: var(--blue); background: var(--blue-dim); }
+
+    /* Hero */
+    .hero {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      padding-top: 52px;
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-left {
+      padding: 5rem 4rem 5rem 5rem;
+      display: flex; flex-direction: column; justify-content: center;
+      border-right: 1px solid var(--border);
+    }
+    .hero-pkg {
+      font-family: var(--mono); font-size: 12px;
+      color: var(--text-muted); margin-bottom: 2rem;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .hero-pkg::before {
+      content: '';
+      display: inline-block; width: 6px; height: 6px;
+      border-radius: 50%; background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+    }
+    .hero-headline {
+      font-family: var(--mono);
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      font-weight: 600;
+      line-height: 1.15;
+      color: #E8F0F8;
+      margin-bottom: 1.5rem;
+      letter-spacing: -0.02em;
+    }
+    .hero-headline .kw { color: var(--blue); }
+    .hero-headline .str { color: var(--green); }
+    .hero-headline .op { color: var(--text-dim); }
+    .hero-sub {
+      font-family: var(--sans); font-size: 16px;
+      color: var(--text-dim); line-height: 1.7;
+      max-width: 38ch; margin-bottom: 3rem;
+    }
+    .hero-actions { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+    .btn-primary {
+      font-family: var(--mono); font-size: 13px;
+      background: var(--blue); color: #fff;
+      padding: 10px 22px; border-radius: 4px; border: none;
+      cursor: pointer; text-decoration: none;
+      transition: opacity 0.15s;
+    }
+    .btn-primary:hover { opacity: 0.85; }
+    .btn-ghost {
+      font-family: var(--mono); font-size: 13px;
+      background: transparent; color: var(--text-dim);
+      padding: 10px 22px; border-radius: 4px;
+      border: 1px solid var(--border2);
+      cursor: pointer; text-decoration: none;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .btn-ghost:hover { color: var(--text); border-color: var(--text-dim); }
+
+    .hero-stats {
+      margin-top: 4rem; display: flex; gap: 3rem;
+      padding-top: 2rem; border-top: 1px solid var(--border);
+    }
+    .stat-val {
+      font-family: var(--mono); font-size: 1.6rem;
+      font-weight: 600; color: #E8F0F8;
+    }
+    .stat-label {
+      font-size: 12px; color: var(--text-muted); margin-top: 2px;
+    }
+
+    /* Hero right — live demo */
+    .hero-right {
+      padding: 5rem 4rem;
+      display: flex; flex-direction: column; justify-content: center;
+      gap: 1.5rem;
+    }
+    .demo-label {
+      font-family: var(--mono); font-size: 11px;
+      color: var(--text-muted); letter-spacing: 0.08em;
+    }
+
+    /* Token bucket visualizer */
+    .bucket-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.5rem;
+    }
+    .bucket-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 1.2rem;
+    }
+    .bucket-title {
+      font-family: var(--mono); font-size: 12px; color: var(--text-dim);
+    }
+    .bucket-rate {
+      font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+    }
+    .bucket-bar-bg {
+      height: 8px; background: var(--surface2);
+      border-radius: 4px; overflow: hidden; margin-bottom: 0.8rem;
+    }
+    .bucket-bar-fill {
+      height: 100%; border-radius: 4px;
+      background: linear-gradient(90deg, #1A6BD4, #3B8BEB);
+      transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .bucket-bar-fill.low { background: linear-gradient(90deg, #991B1B, #F87171); }
+    .bucket-bar-fill.medium { background: linear-gradient(90deg, #92400E, #FBBF24); }
+    .bucket-counts {
+      display: flex; justify-content: space-between;
+      font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+    }
+    .bucket-count-val { color: var(--text-dim); }
+
+    /* Request log */
+    .req-log {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .req-log-header {
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+      display: flex; gap: 1rem;
+    }
+    .req-log-body {
+      height: 160px; overflow-y: auto; padding: 0.5rem 0;
+    }
+    .req-log-body::-webkit-scrollbar { width: 4px; }
+    .req-log-body::-webkit-scrollbar-track { background: transparent; }
+    .req-log-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+    .req-row {
+      display: flex; align-items: center; gap: 1rem;
+      padding: 3px 1rem; font-family: var(--mono); font-size: 11px;
+      animation: fadeIn 0.2s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+    .req-time { color: var(--text-muted); width: 60px; flex-shrink: 0; }
+    .req-key { color: var(--text-dim); flex: 1; }
+    .req-status-ok { color: var(--green); }
+    .req-status-deny { color: var(--red); }
+    .req-remaining { color: var(--text-muted); width: 40px; text-align: right; }
+
+    /* Controls */
+    .demo-controls {
+      display: flex; gap: 0.75rem;
+    }
+    .ctrl-btn {
+      font-family: var(--mono); font-size: 12px;
+      padding: 7px 16px; border-radius: 4px;
+      border: 1px solid var(--border2);
+      background: var(--surface2); color: var(--text-dim);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .ctrl-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .ctrl-btn.active { border-color: var(--blue); color: var(--blue); background: var(--blue-dim); }
+
+    /* Code section */
+    .code-section {
+      display: grid; grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+    }
+    .code-panel {
+      padding: 3.5rem 4rem;
+      border-right: 1px solid var(--border);
+    }
+    .code-panel:last-child { border-right: none; }
+    .section-eyebrow {
+      font-family: var(--mono); font-size: 11px;
+      color: var(--text-muted); margin-bottom: 1.2rem;
+    }
+    .section-title {
+      font-family: var(--mono); font-size: 1.3rem;
+      font-weight: 600; color: #E8F0F8;
+      margin-bottom: 0.8rem; line-height: 1.3;
+    }
+    .section-body {
+      font-size: 14px; color: var(--text-dim);
+      line-height: 1.7; margin-bottom: 1.5rem; max-width: 42ch;
+    }
+    pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.2rem 1.4rem;
+      font-family: var(--mono); font-size: 12px;
+      line-height: 1.7; overflow-x: auto;
+      color: var(--text);
+    }
+    .kw { color: #7BA7D4; }
+    .fn { color: #E8C96A; }
+    .str { color: #7EC89A; }
+    .cm { color: var(--text-muted); }
+    .num { color: #E8A87C; }
+    .prop { color: #C8A0E8; }
+
+    /* Features grid */
+    .features {
+      padding: 5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .features-header {
+      margin-bottom: 3rem;
+    }
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 0; border: 1px solid var(--border); border-radius: 6px;
+      overflow: hidden;
+    }
+    .feature {
+      padding: 2rem;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    .feature:hover { background: var(--surface); }
+    .feature:nth-child(3n) { border-right: none; }
+    .feature:nth-last-child(-n+3) { border-bottom: none; }
+    .feature-icon {
+      font-family: var(--mono); font-size: 11px;
+      color: var(--blue); margin-bottom: 1rem;
+    }
+    .feature-title {
+      font-family: var(--mono); font-size: 13px;
+      font-weight: 600; color: #E8F0F8; margin-bottom: 0.5rem;
+    }
+    .feature-desc {
+      font-size: 13px; color: var(--text-muted); line-height: 1.6;
+    }
+
+    /* Compare table */
+    .compare {
+      padding: 5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    table {
+      width: 100%; border-collapse: collapse;
+      font-family: var(--mono); font-size: 12px;
+      margin-top: 2rem;
+    }
+    th {
+      padding: 0.8rem 1.2rem; text-align: left;
+      color: var(--text-muted); font-weight: 400;
+      border-bottom: 1px solid var(--border);
+    }
+    th.highlight { color: var(--blue); }
+    td {
+      padding: 0.8rem 1.2rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+    td.pkg-name { color: #E8F0F8; }
+    td.check { color: var(--green); }
+    td.cross { color: var(--text-muted); }
+    tr:hover td { background: var(--surface); }
+    tr:last-child td { border-bottom: none; }
+
+    /* Install section */
+    .install {
+      padding: 5rem;
+      border-bottom: 1px solid var(--border);
+      display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center;
+    }
+    .install-cmd {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 6px; padding: 1rem 1.4rem;
+      font-family: var(--mono); font-size: 14px;
+      color: var(--text); display: flex; align-items: center; gap: 1rem;
+      cursor: pointer; transition: border-color 0.15s;
+    }
+    .install-cmd:hover { border-color: var(--blue); }
+    .install-cmd .prompt { color: var(--text-muted); }
+    .install-cmd .copy-hint {
+      margin-left: auto; font-size: 11px; color: var(--text-muted);
+    }
+    .install-cmd.copied .copy-hint { color: var(--green); }
+
+    /* Footer */
+    footer {
+      padding: 2rem 5rem;
+      display: flex; justify-content: space-between; align-items: center;
+      font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+    }
+    footer a { color: var(--text-muted); text-decoration: none; }
+    footer a:hover { color: var(--text-dim); }
+
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; }
+      .hero-left { padding: 4rem 2rem; border-right: none; border-bottom: 1px solid var(--border); }
+      .hero-right { padding: 2rem; }
+      .code-section { grid-template-columns: 1fr; }
+      .code-panel { border-right: none; border-bottom: 1px solid var(--border); padding: 2.5rem 2rem; }
+      .features { padding: 3rem 2rem; }
+      .features-grid { grid-template-columns: 1fr; }
+      .feature:nth-child(3n) { border-right: none; }
+      .feature:nth-last-child(-n+3) { border-bottom: 1px solid var(--border); }
+      .feature:last-child { border-bottom: none; }
+      .compare, .install { padding: 3rem 2rem; }
+      .install { grid-template-columns: 1fr; gap: 2rem; }
+      footer { padding: 2rem; flex-direction: column; gap: 1rem; text-align: center; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-logo"><span>@anantduhan</span>/limiter-core</div>
+  <div class="nav-links">
+    <a href="#features">features</a>
+    <a href="#usage">usage</a>
+    <a href="#compare">compare</a>
+    <a href="https://github.com/AnantDuhan/limiter-core" target="_blank">github</a>
+    <button class="nav-install" onclick="copyInstall()">npm install</button>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-left">
+    <div class="hero-pkg">v1.0.0 · MIT · Node ≥ 18</div>
+    <h1 class="hero-headline">
+      <span class="kw">rate</span><span class="op">.</span><span class="kw">limit</span><span class="op">(</span><br/>
+      &nbsp;&nbsp;<span class="str">'user-123'</span><span class="op">,</span><br/>
+      &nbsp;&nbsp;<span class="op">{</span> backend<span class="op">:</span> <span class="str">'redis'</span> <span class="op">}</span><br/>
+      <span class="op">)</span>
+    </h1>
+    <p class="hero-sub">
+      Token bucket and sliding window rate limiting for Node.js.
+      Memory in development, Redis in production — one line changes the backend.
+    </p>
+    <div class="hero-actions">
+      <a class="btn-primary" href="#usage">get started</a>
+      <a class="btn-ghost" href="https://github.com/AnantDuhan/limiter-core" target="_blank">view on github</a>
+    </div>
+    <div class="hero-stats">
+      <div>
+        <div class="stat-val">18kb</div>
+        <div class="stat-label">published size</div>
+      </div>
+      <div>
+        <div class="stat-val">44</div>
+        <div class="stat-label">tests passing</div>
+      </div>
+      <div>
+        <div class="stat-val">0</div>
+        <div class="stat-label">prod dependencies</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-right">
+    <div class="demo-label">// live demo — token bucket</div>
+
+    <div class="bucket-wrap">
+      <div class="bucket-header">
+        <span class="bucket-title">limiter.check(<span style="color:var(--green)">'api-key-xyz'</span>)</span>
+        <span class="bucket-rate" id="bucket-rate">10 req / 10s</span>
+      </div>
+      <div class="bucket-bar-bg">
+        <div class="bucket-bar-fill" id="bucket-bar" style="width:100%"></div>
+      </div>
+      <div class="bucket-counts">
+        <span>tokens</span>
+        <span class="bucket-count-val"><span id="token-count">10</span> / <span id="token-max">10</span></span>
+      </div>
+    </div>
+
+    <div class="req-log">
+      <div class="req-log-header">
+        <span>time</span>
+        <span>key</span>
+        <span style="margin-left:auto">result</span>
+        <span>remaining</span>
+      </div>
+      <div class="req-log-body" id="req-log"></div>
+    </div>
+
+    <div class="demo-controls">
+      <button class="ctrl-btn" onclick="fireRequest()">fire request</button>
+      <button class="ctrl-btn" id="auto-btn" onclick="toggleAuto()">auto: off</button>
+      <button class="ctrl-btn" onclick="resetBucket()">reset</button>
+    </div>
+  </div>
+</section>
+
+<!-- Usage -->
+<section class="code-section" id="usage">
+  <div class="code-panel">
+    <div class="section-eyebrow">// memory backend</div>
+    <h2 class="section-title">Dev in minutes</h2>
+    <p class="section-body">No Redis needed to get started. Drop in the memory backend and the full API is available immediately.</p>
+    <pre><span class="kw">import</span> { RateLimiter } <span class="kw">from</span> <span class="str">'@anantduhan/limiter-core'</span>;
+
+<span class="kw">const</span> limiter = <span class="kw">new</span> <span class="fn">RateLimiter</span>({
+  strategy: <span class="str">'token-bucket'</span>,
+  rate: <span class="num">100</span>,
+  window: <span class="str">'1 minute'</span>,
+  burst: <span class="num">150</span>,
+  backend: <span class="str">'memory'</span>,   <span class="cm">// ← dev</span>
+});
+
+<span class="kw">const</span> { allowed, remaining } =
+  <span class="kw">await</span> limiter.<span class="fn">check</span>(<span class="str">'user-123'</span>);
+
+<span class="kw">if</span> (!allowed) {
+  res.<span class="fn">status</span>(<span class="num">429</span>).<span class="fn">json</span>({ error: <span class="str">'slow down'</span> });
+}</pre>
+  </div>
+
+  <div class="code-panel">
+    <div class="section-eyebrow">// redis backend</div>
+    <h2 class="section-title">Ship to prod</h2>
+    <p class="section-body">Change one field. The same keys, the same methods, the same behaviour — now atomic across every server in your fleet.</p>
+    <pre><span class="kw">import</span> { createClient } <span class="kw">from</span> <span class="str">'redis'</span>;
+
+<span class="kw">const</span> redis = <span class="fn">createClient</span>({
+  url: process.<span class="prop">env</span>.<span class="prop">REDIS_URL</span>,
+});
+<span class="kw">await</span> redis.<span class="fn">connect</span>();
+
+<span class="kw">const</span> limiter = <span class="kw">new</span> <span class="fn">RateLimiter</span>({
+  strategy: <span class="str">'token-bucket'</span>,
+  rate: <span class="num">100</span>,
+  window: <span class="str">'1 minute'</span>,
+  burst: <span class="num">150</span>,
+  backend: <span class="str">'redis'</span>,     <span class="cm">// ← prod</span>
+  redisClient: redis,
+});
+
+<span class="cm">// identical API from here</span></pre>
+  </div>
+</section>
+
+<!-- Express / Fastify -->
+<section class="code-section">
+  <div class="code-panel">
+    <div class="section-eyebrow">// express</div>
+    <h2 class="section-title">Express middleware</h2>
+    <p class="section-body">Rate limit by IP, user ID, API key, or any value you extract from the request.</p>
+    <pre><span class="kw">import</span> { expressMiddleware }
+  <span class="kw">from</span> <span class="str">'@anantduhan/limiter-core'</span>;
+
+app.<span class="fn">use</span>(<span class="fn">expressMiddleware</span>(limiter, {
+  keyExtractor: (req) =>
+    req.user?.<span class="prop">id</span> ?? req.<span class="prop">ip</span>,
+
+  onLimitReached: (req, res, r) =>
+    res.<span class="fn">status</span>(<span class="num">429</span>).<span class="fn">json</span>({
+      retryAfter: r.<span class="prop">retryAfter</span>,
+    }),
+
+  skip: (req) =>
+    req.<span class="prop">path</span> === <span class="str">'/health'</span>,
+}));</pre>
+  </div>
+
+  <div class="code-panel">
+    <div class="section-eyebrow">// fastify</div>
+    <h2 class="section-title">Fastify plugin</h2>
+    <p class="section-body">Registered as a Fastify plugin. Runs in the preHandler hook and cleans up on server close automatically.</p>
+    <pre><span class="kw">import</span> { fastifyPlugin }
+  <span class="kw">from</span> <span class="str">'@anantduhan/limiter-core'</span>;
+
+<span class="kw">await</span> app.<span class="fn">register</span>(fastifyPlugin, {
+  limiter,
+
+  keyExtractor: (req) =>
+    req.<span class="prop">headers</span>[<span class="str">'x-api-key'</span>]
+    ?? req.<span class="prop">ip</span>,
+});
+
+<span class="cm">// X-RateLimit-* headers added
+// automatically to every response
+// Retry-After on 429s</span></pre>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features" id="features">
+  <div class="features-header">
+    <div class="section-eyebrow">// what's inside</div>
+    <h2 class="section-title">Built for production from day one</h2>
+  </div>
+  <div class="features-grid">
+    <div class="feature">
+      <div class="feature-icon">01 — strategy</div>
+      <div class="feature-title">Token bucket</div>
+      <div class="feature-desc">Smooth rate limiting with configurable burst. Tokens refill gradually — a quiet user banks credit for later.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">02 — strategy</div>
+      <div class="feature-title">Sliding window</div>
+      <div class="feature-desc">Exact per-window counting with no burst. Every request in the last N milliseconds is counted precisely.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">03 — backend</div>
+      <div class="feature-title">Atomic Lua scripts</div>
+      <div class="feature-desc">Redis operations run as a single atomic Lua script. No lost updates under concurrent load across any number of servers.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">04 — reliability</div>
+      <div class="feature-title">Clock skew handling</div>
+      <div class="feature-desc">Uses Redis TIME command, never client Date.now(). NTP drift between app servers cannot corrupt your buckets.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">05 — reliability</div>
+      <div class="feature-title">Fail open</div>
+      <div class="feature-desc">If Redis is unreachable, requests are allowed through and the error is logged. Downtime in your cache layer won't take down your API.</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">06 — ops</div>
+      <div class="feature-title">Auto-expiring keys</div>
+      <div class="feature-desc">Keys expire after 2× the window with no activity. Inactive users never accumulate stale entries in Redis.</div>
+    </div>
+  </div>
+</section>
+
+<!-- Compare -->
+<section class="compare" id="compare">
+  <div class="section-eyebrow">// how it stacks up</div>
+  <h2 class="section-title">Compared to alternatives</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>package</th>
+        <th class="highlight">@anantduhan/limiter-core</th>
+        <th>express-rate-limit</th>
+        <th>bottleneck</th>
+        <th>redis-rate-limiter</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>distributed (Redis)</td>
+        <td class="check">✓</td>
+        <td class="cross">✗</td>
+        <td class="cross">✗</td>
+        <td class="check">✓</td>
+      </tr>
+      <tr>
+        <td>memory + redis same API</td>
+        <td class="check">✓</td>
+        <td class="cross">✗</td>
+        <td class="cross">✗</td>
+        <td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td>token bucket</td>
+        <td class="check">✓</td>
+        <td class="check">✓</td>
+        <td class="check">✓</td>
+        <td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td>sliding window</td>
+        <td class="check">✓</td>
+        <td class="check">✓</td>
+        <td class="cross">✗</td>
+        <td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td>burst allowance</td>
+        <td class="check">✓</td>
+        <td class="cross">✗</td>
+        <td class="check">✓</td>
+        <td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td>clock skew handling</td>
+        <td class="check">✓</td>
+        <td class="cross">✗</td>
+        <td class="cross">✗</td>
+        <td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td>express + fastify adapters</td>
+        <td class="check">✓</td>
+        <td class="cross">express only</td>
+        <td class="cross">✗</td>
+        <td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td>TypeScript</td>
+        <td class="check">✓</td>
+        <td class="check">✓</td>
+        <td class="check">✓</td>
+        <td class="cross">✗</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- Install -->
+<section class="install">
+  <div>
+    <div class="section-eyebrow">// get started</div>
+    <h2 class="section-title">Install in 30 seconds</h2>
+    <p class="section-body">Zero configuration needed to start. Swap to Redis when you're ready to scale.</p>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:1rem;">
+    <div class="install-cmd" id="install-cmd" onclick="copyInstall()">
+      <span class="prompt">$</span>
+      <span>npm install @anantduhan/limiter-core</span>
+      <span class="copy-hint" id="copy-hint">click to copy</span>
+    </div>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text-muted);">
+      peer deps: redis ≥ 4 (optional) · express ≥ 4 (optional) · fastify ≥ 4 (optional)
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <span>@anantduhan/limiter-core · v1.0.0 · MIT</span>
+  <span>
+    <a href="https://github.com/AnantDuhan/limiter-core" target="_blank">github</a>
+    &nbsp;·&nbsp;
+    <a href="https://www.npmjs.com/package/@anantduhan/limiter-core" target="_blank">npm</a>
+    &nbsp;·&nbsp;
+    built by <a href="https://github.com/AnantDuhan" target="_blank">Anant Duhan</a>
+  </span>
+</footer>
+
+<script>
+  // Token bucket demo state
+  const RATE = 10;
+  const WINDOW_MS = 10000;
+  let tokens = RATE;
+  let lastRefill = Date.now();
+  let autoInterval = null;
+  let isAuto = false;
+  let reqCount = 0;
+
+  function getTokens() {
+    const now = Date.now();
+    const elapsed = now - lastRefill;
+    const refill = (elapsed / WINDOW_MS) * RATE;
+    tokens = Math.min(RATE, tokens + refill);
+    lastRefill = now;
+    return tokens;
+  }
+
+  function updateBar() {
+    const t = getTokens();
+    const pct = (t / RATE) * 100;
+    const bar = document.getElementById('bucket-bar');
+    const countEl = document.getElementById('token-count');
+    bar.style.width = pct + '%';
+    bar.className = 'bucket-bar-fill' + (pct < 25 ? ' low' : pct < 60 ? ' medium' : '');
+    countEl.textContent = Math.floor(t);
+  }
+
+  function addLogRow(allowed, remaining) {
+    reqCount++;
+    const log = document.getElementById('req-log');
+    const now = new Date();
+    const time = now.toTimeString().slice(0,8);
+    const row = document.createElement('div');
+    row.className = 'req-row';
+    row.innerHTML = `
+      <span class="req-time">${time}</span>
+      <span class="req-key">api-key-xyz</span>
+      <span class="${allowed ? 'req-status-ok' : 'req-status-deny'}">${allowed ? '200 OK' : '429 TOO MANY'}</span>
+      <span class="req-remaining">${remaining}</span>
+    `;
+    log.prepend(row);
+    // Keep max 20 rows
+    while (log.children.length > 20) log.removeChild(log.lastChild);
+  }
+
+  function fireRequest() {
+    const t = getTokens();
+    const allowed = t >= 1;
+    if (allowed) tokens = t - 1;
+    else tokens = t;
+    lastRefill = Date.now();
+    updateBar();
+    addLogRow(allowed, Math.max(0, Math.floor(tokens)));
+  }
+
+  function toggleAuto() {
+    isAuto = !isAuto;
+    const btn = document.getElementById('auto-btn');
+    if (isAuto) {
+      btn.textContent = 'auto: on';
+      btn.classList.add('active');
+      autoInterval = setInterval(fireRequest, 800);
+    } else {
+      btn.textContent = 'auto: off';
+      btn.classList.remove('active');
+      clearInterval(autoInterval);
+    }
+  }
+
+  function resetBucket() {
+    tokens = RATE;
+    lastRefill = Date.now();
+    updateBar();
+    document.getElementById('req-log').innerHTML = '';
+  }
+
+  // Refill animation
+  setInterval(updateBar, 200);
+
+  // Copy install command
+  function copyInstall() {
+    navigator.clipboard.writeText('npm install @anantduhan/limiter-core');
+    const el = document.getElementById('copy-hint');
+    const cmd = document.getElementById('install-cmd');
+    if (el && cmd) {
+      el.textContent = 'copied!';
+      cmd.classList.add('copied');
+      setTimeout(() => {
+        el.textContent = 'click to copy';
+        cmd.classList.remove('copied');
+      }, 2000);
+    }
+  }
+</script>
+</body>
+</html>
